@@ -3,6 +3,7 @@ import * as fs from "fs-extra";
 import * as glob from "glob";
 
 const zcPath = process.env.zcPath!;
+const neuraCachePath = process.env.neuraCachePath!;
 interface ISynonymous {
     quote: string;
     word: string;
@@ -15,12 +16,28 @@ interface IVerse {
 }
 
 async function main() {
-    const synonyms: ISynonymous[] = [];
     const allverses = getAllverses();
     const allFiles = await getMarkdownFiles(zcPath);
+
+    await fs.rm(path.join(neuraCachePath, "synonyms"), { recursive: true, force: true });
+
     for (const file of allFiles) {
+        const synonyms: ISynonymous[] = [];
+        let tags: string[] = [];
+
         const content = await fs.readFile(path.join(zcPath, file), "utf-8");
-        if (content.indexOf(`\nneuracache: synonymous\n`) > -1) {
+        if (content.indexOf(`\nneura-cache: synonymous\n`) > -1) {
+            const tagsMetadata = `\nneura-cache-tags:`;
+            const tagsIndex = content.indexOf(tagsMetadata);
+
+            if (tagsIndex > -1) {
+                tags = content
+                    .substring(tagsIndex + tagsMetadata.length, content.indexOf(`\n`, tagsIndex + tagsMetadata.length))
+                    .split(" ")
+                    .map(tag => tag.trim())
+                    .filter(tag => !!tag);
+            }
+
             for (const paragraph of content.split("> ")) {
                 const lines = paragraph.split("\n");
                 if (lines.length > 1) {
@@ -42,17 +59,22 @@ async function main() {
                     }
                 }
             }
+            const neuraCacheTags = tags.length ? `#tags ${tags.map(tag => `#${tag}`).join(" ")}\n\n` : "";
+
+            if (synonyms.length) {
+                fs.outputFile(
+                    path.join(neuraCachePath, "synonyms", file),
+                    neuraCacheTags +
+                        synonyms
+                            .map(
+                                synonymous =>
+                                    `#flashcard\nما معنى: ${synonymous.word}\n${synonymous.quote}\n- - -\nمعنى: ${synonymous.word}\n${synonymous.quote}\n\n${synonymous.definition}\n- - -\n`
+                            )
+                            .join("\n")
+                );
+            }
         }
     }
-
-    fs.writeFileSync(
-        "test.txt",
-        synonyms
-            .map(synonymous => `quote: ${synonymous.quote}\nword: ${synonymous.word}\ndefinition: ${synonymous.definition}\n`)
-            .join("\n---\n")
-    );
-
-    console.log(synonyms.length);
 }
 
 main().catch(error => {
