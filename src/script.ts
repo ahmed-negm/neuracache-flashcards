@@ -4,6 +4,7 @@ import * as glob from "glob";
 
 const zcPath = process.env.zcPath!;
 const neuraCachePath = process.env.neuraCachePath!;
+
 interface ISynonymous {
     quote: string;
     word: string;
@@ -26,7 +27,12 @@ async function main() {
         let tags: string[] = [];
 
         const content = await fs.readFile(path.join(zcPath, file), "utf-8");
-        if (content.indexOf(`\nneura-cache: synonymous\n`) > -1) {
+        const neuraCacheMetadataIndex = content.indexOf(`\nneura-cache: `);
+        if (neuraCacheMetadataIndex > -1) {
+            const neuraCacheMetadata = content
+                .substring(neuraCacheMetadataIndex, content.indexOf("\n", neuraCacheMetadataIndex + 10))
+                .split(" ");
+
             const tagsMetadata = `\nneura-cache-tags:`;
             const tagsIndex = content.indexOf(tagsMetadata);
 
@@ -54,7 +60,19 @@ async function main() {
                                 allverses
                             );
 
-                            synonyms.push({ quote: lines[0].trim(), word, definition });
+                            if (neuraCacheMetadata.indexOf("synonymous") > -1) {
+                                synonyms.push({ quote: lines[0].trim(), word, definition });
+                            }
+                        }
+                    }
+
+                    if (neuraCacheMetadata.indexOf("explanation") > -1) {
+                        if (lines[1].startsWith("- ") && !lines[1].startsWith("- **")) {
+                            synonyms.push({
+                                quote: lines[0].trim(),
+                                word: "",
+                                definition: replaceVerseLinks(lines[1].replace(/^\:+|\:+$/g, "").trim(), allverses)
+                            });
                         }
                     }
                 }
@@ -106,7 +124,7 @@ function getAllverses() {
 
 function replaceVerseLinks(definition: string, allverses: IVerse[]) {
     for (const verse of allverses) {
-        definition = definition.replace(verse.link, `"${verse.ayah}"`);
+        definition = definition.replace(verse.link, `"${verse.ayah}" ${verse.link}`);
     }
 
     return definition;
